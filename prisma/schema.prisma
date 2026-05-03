@@ -1,0 +1,269 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique(map: "email_unique")
+  password     String
+  userName     String?  @unique(map: "userName_unique")
+  firstName    String?  @db.VarChar(255)
+  lastName     String?  @db.VarChar(255)
+  phoneNumber  String?  @db.VarChar(255)
+  profileImage String?  @db.VarChar(255)
+  isActive     Boolean  @default(true)
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  roles         UserHasRoles[]
+  shippingZones Address[]
+  cart          Cart?
+  orders        Order[]
+  sessions      Session[]
+  otps          Otp[]
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique(map: "token_unique")
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Otp {
+  id        Int      @id @default(autoincrement())
+  code      String   @db.VarChar(6)
+  type      OtpType
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum OtpType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model UserHasRoles {
+  userId Int
+  roleId Int
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  title       String   @unique(map: "title_unique")
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  users       UserHasRoles[]
+  permissions RoleHasPermissions[]
+}
+
+model RoleHasPermissions {
+  roleId       Int
+  permissionId Int
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Permission {
+  id          Int      @id @default(autoincrement())
+  title       String   @unique(map: "title_unique")
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  roles RoleHasPermissions[]
+}
+
+model Cart {
+  id        Int        @id @default(autoincrement())
+  sessionId String     @unique(map: "sessionId_unique")
+  status    CartStatus
+  expiresAt DateTime
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @default(now()) @updatedAt
+
+  userId Int        @unique(map: "userId_unique")
+  user   User       @relation(fields: [userId], references: [id])
+  item   CartItem[]
+}
+
+enum CartStatus {
+  ACTIVE
+  ABANDONED
+  CONVERTED
+}
+
+model CartItem {
+  quantity  Int
+  unitPrice Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  productId Int
+  cartId    Int
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@id([cartId, productId])
+}
+
+model Product {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique(map: "name_unique") @db.VarChar(255)
+  description     String   @db.LongText
+  images          Json
+  price           Float    @db.Float
+  stock           Int      @default(0)
+  cookingDuration Int
+  isAvailable     Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+  categoryId      Int
+  category        Category @relation(fields: [categoryId], references: [id])
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique(map: "name_unique") @db.VarChar(255)
+  description String?  @db.LongText
+  image       String   @db.VarChar(255)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  products Product[]
+}
+
+model GlobalSettings {
+  id             Int      @id @default(autoincrement())
+  companyName    String   @db.VarChar(255)
+  companyAddress String   @db.VarChar(255)
+  logo           String   @db.VarChar(255)
+  companyEmail   String   @db.VarChar(255)
+  companyPhone   String   @db.VarChar(255)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+}
+
+model ShippingZone {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique(map: "name_unique") @db.VarChar(255)
+  region      RegionType
+  fee         Float      @db.Float
+  description String?    @db.LongText
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+
+  users  Address[]
+  orders Order[]
+}
+
+enum RegionType {
+  ADAMAOUA
+  CENTRE
+  EST
+  EXTREME_NORD
+  LITTORAL
+  NORD
+  NORD_OUEST
+  OUEST
+  SUD
+  SUD_OUEST
+}
+
+model Address {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(255)
+  street    String   @db.VarChar(255)
+  details   String?  @db.LongText
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  orders         Order[]
+  userId         Int
+  shippingZoneId Int
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shippingZone   ShippingZone @relation(fields: [shippingZoneId], references: [id])
+}
+
+model Order {
+  id                  Int           @id @default(autoincrement())
+  totalProducts       Float         @db.Float
+  shippingFee         Float         @db.Float
+  shippingAddress     String        @db.VarChar(255)
+  paymentProofUrl     String        @db.VarChar(255)
+  totalAmount         Float         @db.Float
+  isDeliveryRequested Boolean       @default(false)
+  status              OrderStatus
+  paymentMethod       paymentMethod
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  items          OrderItem[]
+  userId         Int
+  shippingZoneId Int
+  AddressId      Int
+  Address        Address      @relation(fields: [AddressId], references: [id])
+  shippingZone   ShippingZone @relation(fields: [shippingZoneId], references: [id])
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  DELIVERED
+  CANCELLED
+}
+
+enum paymentMethod {
+  ORANGE_MONEY
+  MTN_MOBILE_MONEY
+  CASH_ON_DELIVERY
+}
+
+model OrderItem {
+  quantity  Int
+  unitPrice Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  productId Int
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@id([orderId, productId])
+}

@@ -1,0 +1,41 @@
+{
+  "name": "braiz-up-backend",
+  "version": "1.0.0",
+  "description": "API backend pour projet BRAIZ UP",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rimraf dist && tsc && cp -r public dist/",
+    "start": "nodemon dist/index.js",
+    "dev": "concurrently \"tsc -w\" \"nodemon dist/index.js\"",
+    "prestart": "npm run build",
+    "preserve": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/engouloudyllan/BRAIZ-UP-Backend.git"
+  },
+  "author": "dyllan-lc",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/engouloudyllan/BRAIZ-UP-Backend/issues"
+  },
+  "homepage": "https://github.com/engouloudyllan/BRAIZ-UP-Backend#readme",
+  "dependencies": {
+    "@prisma/adapter-mariadb": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "@prisma/config": "^7.8.0",
+    "@types/express": "^5.0.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14",
+    "rimraf": "^6.1.3",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "concurrently": "^9.2.1",
+    "prisma": "^7.8.0"
+  }
+}
