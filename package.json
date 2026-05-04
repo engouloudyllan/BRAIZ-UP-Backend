@@ -6,8 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rimraf dist && tsc && cp -r public dist/",
-    "start": "nodemon dist/index.js",
-    "dev": "concurrently \"tsc -w\" \"nodemon dist/index.js\"",
+    "start": "nodemon dist/src/index.js",
+    "serve": "concurrently \"tsc -w\" \"nodemon --exec node dist/src/index.js\"",
     "prestart": "npm run build",
     "preserve": "npm run build"
   },
@@ -24,6 +24,7 @@
   "homepage": "https://github.com/engouloudyllan/BRAIZ-UP-Backend#readme",
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.8.0",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@prisma/config": "^7.8.0",
     "@types/express": "^5.0.6",
