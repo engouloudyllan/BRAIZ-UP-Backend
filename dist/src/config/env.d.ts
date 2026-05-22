@@ -1,4 +1,5 @@
 declare const env: {
+    whiteListOrigin: string[];
     port: string | number;
     host: string;
     url: string;

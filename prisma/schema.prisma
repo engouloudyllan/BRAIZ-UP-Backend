@@ -20,6 +20,8 @@ model User {
   lastName     String?  @db.VarChar(255)
   phoneNumber  String?  @db.VarChar(255)
   profileImage String?  @db.VarChar(255)
+  responsable  String?  @db.VarChar(255)
+  companyName  String?  @db.VarChar(255)
   isActive     Boolean  @default(true)
   isVerified   Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -104,14 +106,14 @@ model Permission {
 
 model Cart {
   id        Int        @id @default(autoincrement())
-  sessionId String     @unique(map: "sessionId_unique")
-  status    CartStatus
+  sessionId String?    @unique(map: "sessionId_unique") // ça sert généralement à gérer: les paniers des utilisateurs NON connectés (guest carts)
+  status    CartStatus @default(ACTIVE)
   expiresAt DateTime
   createdAt DateTime   @default(now())
   updatedAt DateTime   @default(now()) @updatedAt
 
-  userId Int        @unique(map: "userId_unique")
-  user   User       @relation(fields: [userId], references: [id])
+  userId Int?       @unique(map: "userId_unique")
+  user   User?      @relation(fields: [userId], references: [id])
   item   CartItem[]
 }
 
@@ -175,31 +177,80 @@ model GlobalSettings {
   updatedAt      DateTime @default(now()) @updatedAt
 }
 
-model ShippingZone {
-  id          Int        @id @default(autoincrement())
-  name        String     @unique(map: "name_unique") @db.VarChar(255)
-  region      RegionType
-  fee         Float      @db.Float
-  description String?    @db.LongText
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @default(now()) @updatedAt
+model Region {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(255)
 
-  users  Address[]
-  orders Order[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  cities City[]
 }
 
-enum RegionType {
-  ADAMAOUA
-  CENTRE
-  EST
-  EXTREME_NORD
-  LITTORAL
-  NORD
-  NORD_OUEST
-  OUEST
-  SUD
-  SUD_OUEST
+model City {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(255)
+
+  regionId Int
+  region   Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  districts District[] // Une ville peut avoir plusieurs quartiers
+
+  @@unique([name, regionId])
+}
+
+model District {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(255)
+
+  cityId Int
+  city   City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  neighborhoods Neighborhood[]
+  shippingZones ShippingZone[]
+
+  @@unique([name, cityId])
+}
+
+model Neighborhood {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(255)
+
+  districtId Int
+  district   District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  shippingZones ShippingZone[]
+
+  @@unique([name, districtId])
+}
+
+model ShippingZone {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique(map: "name_unique") @db.VarChar(255)
+  fee         Float   @db.Float
+  description String? @db.LongText
+  isActive    Boolean @default(true)
+
+  districtId     Int
+  neighborhoodId Int?
+
+  district     District      @relation(fields: [districtId], references: [id])
+  neighborhood Neighborhood? @relation(fields: [neighborhoodId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  addresses Address[]
+  orders    Order[]
 }
 
 model Address {
@@ -220,31 +271,58 @@ model Address {
 
 model Order {
   id                  Int           @id @default(autoincrement())
+  codeTicket          String        @unique
   totalProducts       Float         @db.Float
   shippingFee         Float         @db.Float
   shippingAddress     String        @db.VarChar(255)
   paymentProofUrl     String        @db.VarChar(255)
   totalAmount         Float         @db.Float
   isDeliveryRequested Boolean       @default(false)
+  deliveryTime        DateTime?
+  proximityAddress    String?       @db.VarChar(100)
   status              OrderStatus
   paymentMethod       paymentMethod
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  customerType        CustomerType
+
+  confirmedAt DateTime? // Date de confirmation de la commande
+  paidAt      DateTime? // Date de paiement de la commande
+  preparingAt DateTime? // Date de préparation de la commande
+  readyAt     DateTime? // Date de préparation terminée
+  deliveredAt DateTime? // Date de livraison
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trackingToken    String  @unique @default(uuid()) // Génère le token unique pour l'URL de suivi
+  guestName        String? @db.VarChar(255) // Nom de l'invité si pas de compte
+  guestSurname     String? @db.VarChar(255) // Prénom de l'invité si pas de compte
+  guestCompanyName String? @db.VarChar(255) // Nom de l'entreprise de l'invité si pas de compte
+  guestResponsable String? @db.VarChar(255) // Responsable de l'invité si pas de compte
+  guestPhone       String? @db.VarChar(255) // Téléphone de l'invité si pas de compte
+  guestEmail       String? @db.VarChar(255) // Email de l'invité si pas de compte
+  guestCity        String? @db.VarChar(255) // Ville de l'invité si pas de compte
 
   items          OrderItem[]
-  userId         Int
+  userId         Int?
   shippingZoneId Int
-  AddressId      Int
-  Address        Address      @relation(fields: [AddressId], references: [id])
+  AddressId      Int?
+  Address        Address?     @relation(fields: [AddressId], references: [id])
   shippingZone   ShippingZone @relation(fields: [shippingZoneId], references: [id])
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum CustomerType {
+  PARTICULIER
+  ENTREPRISE
 }
 
 enum OrderStatus {
-  PENDING
-  PREPARING
-  DELIVERED
-  CANCELLED
+  EN_PRECOMMANDE
+  EN_COURS_DE_PREPARATION
+  PRÊTE
+  EN_LIVRAISON
+  LIVRÉE
+  ANNULÉE
 }
 
 enum paymentMethod {

@@ -1,15 +1,15 @@
+import ResponseHandler from "../helpers/responses.js";
 import { prisma } from "../models/index.js";
 import express from "express";
 class UserController {
-    static async getAll(req, res) {
+    static async getAll(req, res, next) {
         try {
             const users = await prisma.user.findMany();
-            res.json(users);
-            console.log("Fetched users:", users);
+            return ResponseHandler.success(res, users, "récupération des users éffectuée avec succès");
         }
         catch (error) {
-            console.error("Error fetching users:", error);
-            res.status(500).json({ error: "Internal Server Error" });
+            console.log(error);
+            next(error);
         }
     }
 }
