@@ -1,5 +1,4 @@
 import * as Yup from "yup";
-import { PrismaClient } from "@prisma/client";
 import { prisma } from "../models/index.js";
 
 export const getByIdShippingZoneSchema = Yup.object({
