@@ -7,7 +7,7 @@
     "dev": "nodemon --exec ts-node ./src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rimraf dist && tsc && cp -r public dist/",
-    "start": "node dist/src/index.js",
+    "start": "node dist/index.js",
     "serve": "concurrently \"tsc -w\" \"nodemon --exec node dist/src/index.js\"",
     "postinstall": "prisma generate",
     "preserve": "npm run build"
