@@ -6,6 +6,9 @@ import seedNeighborhoods from "./seeders/neighborhood.seeder.js";
 import env from "../src/config/env.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
+console.log("Host ciblé :", env.dbHost);
+console.log("Port ciblé :", env.dbPort);
+
 const adapter = new PrismaMariaDb({
   host: env.dbHost,
   port: Number(env.dbPort),
@@ -13,7 +16,9 @@ const adapter = new PrismaMariaDb({
   database: env.dbName,
   user: env.dbUser,
   password: env.dbPassword,
+  connectTimeout: 20000,
 });
+
 
 const prisma = new PrismaClient({ adapter });
 
