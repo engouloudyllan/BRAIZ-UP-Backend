@@ -52,16 +52,57 @@ interface GuestOrderBody {
 
 class OrderController {
   // ── GET / ────────────────────────────────────────────────────────────
+  // Pagination optionnelle via ?page=&limit=&status=&search=
   static async getAll(
     req: express.Request,
     res: express.Response,
     next: express.NextFunction,
   ) {
     try {
+      const { page, limit, status, search } = req.query;
+      const take = limit ? Math.max(1, Math.min(100, +limit)) : 0; // 0 = no pagination
+      const _page = page ? Math.max(1, +page) : 1;
+      const skip = take ? (_page - 1) * take : 0;
+
+      const where: any = {};
+      if (status && typeof status === "string") where.status = status;
+      if (search && typeof search === "string") {
+        const s = search.trim();
+        where.OR = [
+          { codeTicket: { contains: s } },
+          { guestName: { contains: s } },
+          { guestSurname: { contains: s } },
+          { guestPhone: { contains: s } },
+        ];
+      }
+
       const orders = await prisma.order.findMany({
+        where,
         include: ORDER_INCLUDE,
         orderBy: { createdAt: "desc" },
+        ...(take ? { take, skip } : {}),
       });
+
+      if (take) {
+        const totalItems = await prisma.order.count({ where });
+        return ApiResponse.success(
+          res,
+          {
+            data: orders,
+            pagination: {
+              limit: take,
+              currentPage: _page,
+              previousPage: _page > 1 ? _page - 1 : null,
+              nextPage:
+                _page * take >= totalItems ? null : _page + 1,
+              totalItem: totalItems,
+              totalPage: Math.ceil(totalItems / take),
+            },
+          },
+          "Order list",
+        );
+      }
+
       return ApiResponse.success(res, orders, "Order list");
     } catch (error) {
       next(error);
@@ -249,16 +290,15 @@ class OrderController {
         }
       }
 
-      // ── 6. Code ticket unique ─────────────────────────────────────────
-      const codeTicket = `BRZ-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 6)
-        .toUpperCase()}`;
+      // ── 6. Création de la commande (codeTicket provisoire) ───────────
+      // Format final : YYYYMMDD_HHMMSS_id  (ex: 20260515_150801_11)
+      // On crée avec un codeTicket unique provisoire puis on le formate
+      // avec l'ID réel pour respecter la contrainte UNIQUE de la table.
+      const tempCode = `TMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-      // ── 7. Création ───────────────────────────────────────────────────
-      const order = await prisma.order.create({
+      const createdOrder = await prisma.order.create({
         data: {
-          codeTicket,
+          codeTicket: tempCode,
           totalProducts,
           shippingFee,
           shippingAddress: body.shippingAddress ?? "",
@@ -280,6 +320,16 @@ class OrderController {
           shippingZoneId: zone.id,
           items: { create: orderItemsData },
         },
+      });
+
+      // ── 7. Mise à jour avec codeTicket formaté ────────────────────────
+      const d = createdOrder.createdAt;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const codeTicket = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}_${createdOrder.id}`;
+
+      const order = await prisma.order.update({
+        where: { id: createdOrder.id },
+        data: { codeTicket },
         include: ORDER_INCLUDE,
       });
 
