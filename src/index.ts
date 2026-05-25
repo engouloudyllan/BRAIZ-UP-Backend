@@ -31,9 +31,17 @@ app.use("/api", router);
 
 app.use(errorHandler);
 
-app.listen(Number(env.port), env.host, () => {
-  console.log(
-    `The application runs at the following URL: http://${env.host}:${env.port}`,
-    console.log(`Allowed origins: ${env.whiteListOrigin.join(", ")}`),
-  );
+// app.listen(Number(env.port), env.host, () => {
+//   console.log(
+//     `The application runs at the following URL: http://${env.host}:${env.port}`,
+//     console.log(`Allowed origins: ${env.whiteListOrigin.join(", ")}`),
+//   );
+// });
+
+const port = process.env.PORT || env.port || 3001;
+const host = process.env.PORT ? "0.0.0.0" : (env.host || "127.0.0.1");
+
+app.listen(Number(port), host, () => {
+  console.log(`The application runs at the following URL: http://${host}:${port}`);
+  console.log(`Allowed origins: ${env.whiteListOrigin.join(", ")}`);
 });
