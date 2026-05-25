@@ -1,5 +1,0 @@
--- AlterTable
-ALTER TABLE `Cart` MODIFY `status` ENUM('ACTIVE', 'ABANDONED', 'CONVERTED') NOT NULL DEFAULT 'ACTIVE';
-
--- AlterTable
-ALTER TABLE `Order` ADD COLUMN `proximityAddress` VARCHAR(100) NULL;

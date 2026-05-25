@@ -3,10 +3,10 @@ import OrderController from "../controllers/order.controller.js";
 
 const orderRouter = express.Router();
 
-orderRouter.get("/", OrderController.create);
 orderRouter.get("/", OrderController.getAll);
+orderRouter.post("/", OrderController.create);
 orderRouter.get("/:id", OrderController.getById);
-orderRouter.get("/:id", OrderController.cancelOrder);
-orderRouter.get("/:id", OrderController.updateStatusOrder);
+orderRouter.patch("/:id/status", OrderController.updateStatusOrder);
+orderRouter.patch("/:id/cancel", OrderController.cancelOrder);
 
 export default orderRouter;

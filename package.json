@@ -4,7 +4,7 @@
   "description": "API backend pour projet BRAIZ UP",
   "main": "dist/src/index.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node ./src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec tsx ./src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rimraf dist && tsc && cp -r public dist/",
     "start": "node dist/src/index.js",
@@ -58,6 +58,6 @@
     "tsx": "^4.22.3"
   },
   "prisma": {
-    "seed": "node prisma/seed.js"
+    "seed": "tsx prisma/seed.ts"
   }
 }

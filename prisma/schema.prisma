@@ -13,15 +13,15 @@ datasource db {
 
 model User {
   id           Int      @id @default(autoincrement())
-  email        String   @unique(map: "email_unique")
+  email        String   @db.VarChar(191) @unique(map: "email_unique")
   password     String
-  userName     String?  @unique(map: "userName_unique")
-  firstName    String?  @db.VarChar(255)
-  lastName     String?  @db.VarChar(255)
-  phoneNumber  String?  @db.VarChar(255)
-  profileImage String?  @db.VarChar(255)
-  responsable  String?  @db.VarChar(255)
-  companyName  String?  @db.VarChar(255)
+  userName     String?  @db.VarChar(191) @unique(map: "userName_unique")
+  firstName    String?  @db.VarChar(191)
+  lastName     String?  @db.VarChar(191)
+  phoneNumber  String?  @db.VarChar(191)
+  profileImage String?  @db.VarChar(191)
+  responsable  String?  @db.VarChar(191)
+  companyName  String?  @db.VarChar(191)
   isActive     Boolean  @default(true)
   isVerified   Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -37,7 +37,7 @@ model User {
 
 model Session {
   id        Int      @id @default(autoincrement())
-  token     String   @unique(map: "token_unique")
+  token     String   @db.VarChar(191) @unique(map: "token_unique")
   userId    Int
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -75,7 +75,7 @@ model UserHasRoles {
 
 model Role {
   id          Int      @id @default(autoincrement())
-  title       String   @unique(map: "title_unique")
+  title       String   @db.VarChar(191) @unique(map: "title_unique")
   description String?  @db.VarChar(255)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
@@ -96,7 +96,7 @@ model RoleHasPermissions {
 
 model Permission {
   id          Int      @id @default(autoincrement())
-  title       String   @unique(map: "title_unique")
+  title       String   @db.VarChar(191) @unique(map: "title_unique")
   description String?  @db.VarChar(255)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
@@ -106,7 +106,7 @@ model Permission {
 
 model Cart {
   id        Int        @id @default(autoincrement())
-  sessionId String?    @unique(map: "sessionId_unique") // ça sert généralement à gérer: les paniers des utilisateurs NON connectés (guest carts)
+  sessionId String?    @db.VarChar(191) @unique(map: "sessionId_unique")
   status    CartStatus @default(ACTIVE)
   expiresAt DateTime
   createdAt DateTime   @default(now())
@@ -139,7 +139,7 @@ model CartItem {
 
 model Product {
   id              Int      @id @default(autoincrement())
-  name            String   @unique(map: "name_unique") @db.VarChar(255)
+  name            String   @unique(map: "name_unique") @db.VarChar(191)
   description     String   @db.LongText
   images          Json
   price           Float    @db.Float
@@ -157,7 +157,7 @@ model Product {
 
 model Category {
   id          Int      @id @default(autoincrement())
-  name        String   @unique(map: "name_unique") @db.VarChar(255)
+  name        String   @unique(map: "name_unique") @db.VarChar(191)
   description String?  @db.LongText
   image       String   @db.VarChar(255)
   createdAt   DateTime @default(now())
@@ -179,7 +179,7 @@ model GlobalSettings {
 
 model Region {
   id   Int    @id @default(autoincrement())
-  name String @unique @db.VarChar(255)
+  name String @unique @db.VarChar(191)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -189,7 +189,7 @@ model Region {
 
 model City {
   id   Int    @id @default(autoincrement())
-  name String @db.VarChar(255)
+  name String @db.VarChar(191)
 
   regionId Int
   region   Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
@@ -204,7 +204,7 @@ model City {
 
 model District {
   id   Int    @id @default(autoincrement())
-  name String @db.VarChar(255)
+  name String @db.VarChar(191)
 
   cityId Int
   city   City @relation(fields: [cityId], references: [id], onDelete: Cascade)
@@ -220,7 +220,7 @@ model District {
 
 model Neighborhood {
   id   Int    @id @default(autoincrement())
-  name String @db.VarChar(255)
+  name String @db.VarChar(191)
 
   districtId Int
   district   District @relation(fields: [districtId], references: [id], onDelete: Cascade)
@@ -235,7 +235,7 @@ model Neighborhood {
 
 model ShippingZone {
   id          Int     @id @default(autoincrement())
-  name        String  @unique(map: "name_unique") @db.VarChar(255)
+  name        String  @unique(map: "name_unique") @db.VarChar(191)
   fee         Float   @db.Float
   description String? @db.LongText
   isActive    Boolean @default(true)
@@ -248,6 +248,7 @@ model ShippingZone {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
 
   addresses Address[]
   orders    Order[]
@@ -271,7 +272,7 @@ model Address {
 
 model Order {
   id                  Int           @id @default(autoincrement())
-  codeTicket          String        @unique
+  codeTicket          String        @db.VarChar(191) @unique
   totalProducts       Float         @db.Float
   shippingFee         Float         @db.Float
   shippingAddress     String        @db.VarChar(255)
@@ -284,22 +285,22 @@ model Order {
   paymentMethod       paymentMethod
   customerType        CustomerType
 
-  confirmedAt DateTime? // Date de confirmation de la commande
-  paidAt      DateTime? // Date de paiement de la commande
-  preparingAt DateTime? // Date de préparation de la commande
-  readyAt     DateTime? // Date de préparation terminée
-  deliveredAt DateTime? // Date de livraison
+  confirmedAt DateTime?
+  paidAt      DateTime?
+  preparingAt DateTime?
+  readyAt     DateTime?
+  deliveredAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trackingToken    String  @unique @default(uuid()) // Génère le token unique pour l'URL de suivi
-  guestName        String? @db.VarChar(255) // Nom de l'invité si pas de compte
-  guestSurname     String? @db.VarChar(255) // Prénom de l'invité si pas de compte
-  guestCompanyName String? @db.VarChar(255) // Nom de l'entreprise de l'invité si pas de compte
-  guestResponsable String? @db.VarChar(255) // Responsable de l'invité si pas de compte
-  guestPhone       String? @db.VarChar(255) // Téléphone de l'invité si pas de compte
-  guestEmail       String? @db.VarChar(255) // Email de l'invité si pas de compte
+  trackingToken    String  @db.VarChar(191) @unique @default(uuid())
+  guestName        String? @db.VarChar(255)
+  guestSurname     String? @db.VarChar(255)
+  guestCompanyName String? @db.VarChar(255)
+  guestResponsable String? @db.VarChar(255)
+  guestPhone       String? @db.VarChar(255)
+  guestEmail       String? @db.VarChar(255)
   guestCity        String? @db.VarChar(255) // Ville de l'invité si pas de compte
 
   items          OrderItem[]
