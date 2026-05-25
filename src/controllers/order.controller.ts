@@ -4,17 +4,32 @@ import ApiResponse from "../helpers/responses.js";
 import Utils from "../helpers/Utils.js";
 import type { OrderStatus, paymentMethod, CustomerType } from "@prisma/client";
 import type { UploadedFile } from "express-fileupload";
+import {
+  notifyOrderInitiated,
+  notifyStatusChanged,
+} from "../services/notification.service.js";
 
 const ORDER_INCLUDE = {
   user: {
-    select: { id: true, firstName: true, lastName: true, email: true, phoneNumber: true },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phoneNumber: true,
+    },
   },
   items: {
     include: {
       product: { select: { id: true, name: true, images: true } },
     },
   },
-  shippingZone: true,
+  shippingZone: {
+    include: {
+      district: { include: { city: true } },
+      neighborhood: true,
+    },
+  },
 } as const;
 
 interface GuestOrderBody {
@@ -28,14 +43,15 @@ interface GuestOrderBody {
   guestCity?: string;
   isDeliveryRequested?: string;
   shippingAddress?: string;
-  shippingFee?: string;
+  shippingZoneId?: string; // ← envoyé par le frontend
+  proximityAddress?: string; // ← adresse approximative tapée par le client
   deliveryTime?: string;
-  proximityAddress?: string;
   paymentMethod?: string;
-  items?: string; // JSON string: [{productId: number, quantity: number}]
+  items?: string; // JSON: [{productId, quantity}]
 }
 
 class OrderController {
+  // ── GET / ────────────────────────────────────────────────────────────
   static async getAll(
     req: express.Request,
     res: express.Response,
@@ -52,6 +68,7 @@ class OrderController {
     }
   }
 
+  // ── GET /:id ─────────────────────────────────────────────────────────
   static async getById(
     req: express.Request,
     res: express.Response,
@@ -72,22 +89,56 @@ class OrderController {
     }
   }
 
+  // ── GET /track/:token ────────────────────────────────────────────────
+  // Route publique pour suivi client (pas d'auth requise).
+  static async getByTrackingToken(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) {
+    const token = String(req.params.token ?? "");
+    if (!token) {
+      return ApiResponse.error(res, null, "Token manquant", 400);
+    }
+    try {
+      const order = await prisma.order.findFirst({
+        where: { trackingToken: token },
+        include: ORDER_INCLUDE,
+      });
+      if (!order) {
+        return ApiResponse.notFound(
+          res,
+          `Aucune commande trouvée avec ce token.`,
+        );
+      }
+      return ApiResponse.success(res, order, "Tracking info");
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ── POST / ───────────────────────────────────────────────────────────
   static async create(
     req: express.Request,
     res: express.Response,
     next: express.NextFunction,
   ) {
     const body = req.body as GuestOrderBody;
-    const files = (req as any).files as Record<string, UploadedFile | UploadedFile[]> | undefined;
+    const files = (req as any).files as
+      | Record<string, UploadedFile | UploadedFile[]>
+      | undefined;
     const proofFile = files?.paymentProof;
 
-    // ── Validation rapide ──────────────────────────────────────────────────
+    // ── Validation ──────────────────────────────────────────────────────
     const validPaymentMethods: paymentMethod[] = [
       "ORANGE_MONEY",
       "MTN_MOBILE_MONEY",
       "CASH_ON_DELIVERY",
     ];
-    if (!body.paymentMethod || !validPaymentMethods.includes(body.paymentMethod as paymentMethod)) {
+    if (
+      !body.paymentMethod ||
+      !validPaymentMethods.includes(body.paymentMethod as paymentMethod)
+    ) {
       return ApiResponse.error(res, null, "Moyen de paiement invalide", 400);
     }
 
@@ -97,9 +148,13 @@ class OrderController {
     } catch {
       return ApiResponse.error(res, null, "Format des articles invalide", 400);
     }
-
     if (!parsedItems.length) {
-      return ApiResponse.error(res, null, "La commande doit contenir au moins un article", 400);
+      return ApiResponse.error(
+        res,
+        null,
+        "La commande doit contenir au moins un article",
+        400,
+      );
     }
 
     const customerType: CustomerType =
@@ -107,27 +162,55 @@ class OrderController {
     const isDeliveryRequested = body.isDeliveryRequested === "true";
 
     try {
-      // ── 1. Zone de livraison par défaut ──────────────────────────────────
-      const defaultZone = await prisma.shippingZone.findFirst({
-        where: { isActive: true },
-      });
-      if (!defaultZone) {
-        return ApiResponse.error(res, null, "Aucune zone de livraison configurée", 500);
+      // ── 1. Choisir la zone de livraison ──────────────────────────────
+      let zone: { id: number; fee: number } | null = null;
+
+      if (body.shippingZoneId) {
+        zone = await prisma.shippingZone.findFirst({
+          where: { id: +body.shippingZoneId, isActive: true },
+          select: { id: true, fee: true },
+        });
       }
 
-      // ── 2. Vérifier les produits + calculer les totaux ───────────────────
+      // Fallback : prendre la première zone active si aucune n'est fournie
+      if (!zone) {
+        zone = await prisma.shippingZone.findFirst({
+          where: { isActive: true },
+          select: { id: true, fee: true },
+        });
+      }
+
+      if (!zone) {
+        return ApiResponse.error(
+          res,
+          null,
+          "Aucune zone de livraison configurée",
+          500,
+        );
+      }
+
+      // ── 2. Produits + totaux ──────────────────────────────────────────
       const productIds = parsedItems.map((i) => i.productId);
       const products = await prisma.product.findMany({
         where: { id: { in: productIds } },
       });
 
       let totalProducts = 0;
-      const orderItemsData: { productId: number; quantity: number; unitPrice: number }[] = [];
+      const orderItemsData: {
+        productId: number;
+        quantity: number;
+        unitPrice: number;
+      }[] = [];
 
       for (const item of parsedItems) {
         const product = products.find((p) => p.id === item.productId);
         if (!product) {
-          return ApiResponse.error(res, null, `Produit introuvable : ID ${item.productId}`, 400);
+          return ApiResponse.error(
+            res,
+            null,
+            `Produit introuvable : ID ${item.productId}`,
+            400,
+          );
         }
         totalProducts += product.price * item.quantity;
         orderItemsData.push({
@@ -137,23 +220,20 @@ class OrderController {
         });
       }
 
-      // ── 3. Frais de livraison ────────────────────────────────────────────
-      const shippingFee = isDeliveryRequested
-        ? parseFloat(body.shippingFee ?? "0") || defaultZone.fee
-        : 0;
+      // ── 3. Frais de livraison (depuis la zone réelle) ─────────────────
+      const shippingFee = isDeliveryRequested ? zone.fee : 0;
       const totalAmount = totalProducts + shippingFee;
 
-      // ── 4. Preuve de paiement (upload) ───────────────────────────────────
+      // ── 4. Preuve de paiement (upload) ────────────────────────────────
       let paymentProofUrl = "";
       if (proofFile) {
         const file = Array.isArray(proofFile) ? proofFile[0] : proofFile;
         paymentProofUrl = (await Utils.saveFile(file, "orders")) as string;
       }
 
-      // ── 5. Heure de livraison ────────────────────────────────────────────
+      // ── 5. Heure de livraison ─────────────────────────────────────────
       let deliveryDateTime: Date | null = null;
       if (isDeliveryRequested && body.deliveryTime) {
-        // body.deliveryTime peut être "HH:MM" ou une ISO string
         if (body.deliveryTime.includes("T")) {
           deliveryDateTime = new Date(body.deliveryTime);
         } else {
@@ -169,13 +249,13 @@ class OrderController {
         }
       }
 
-      // ── 6. Code ticket unique ────────────────────────────────────────────
+      // ── 6. Code ticket unique ─────────────────────────────────────────
       const codeTicket = `BRZ-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 6)
         .toUpperCase()}`;
 
-      // ── 7. Création de la commande ───────────────────────────────────────
+      // ── 7. Création ───────────────────────────────────────────────────
       const order = await prisma.order.create({
         data: {
           codeTicket,
@@ -186,7 +266,7 @@ class OrderController {
           totalAmount,
           isDeliveryRequested,
           deliveryTime: deliveryDateTime,
-          proximityAddress: body.proximityAddress ?? null,
+          proximityAddress: body.proximityAddress?.trim() || null,
           status: "EN_PRECOMMANDE",
           paymentMethod: body.paymentMethod as paymentMethod,
           customerType,
@@ -197,21 +277,28 @@ class OrderController {
           guestPhone: body.guestPhone ?? null,
           guestEmail: body.guestEmail ?? null,
           guestCity: body.guestCity ?? null,
-          shippingZoneId: defaultZone.id,
-          items: {
-            create: orderItemsData,
-          },
+          shippingZoneId: zone.id,
+          items: { create: orderItemsData },
         },
         include: ORDER_INCLUDE,
       });
 
-      return ApiResponse.success(res, order, "Commande créée avec succès", 201);
+      // ── 8. Notifications (fire & forget) ─────────────────────────────
+      notifyOrderInitiated(order).catch(() => {});
+
+      return ApiResponse.success(
+        res,
+        order,
+        "Commande créée avec succès",
+        201,
+      );
     } catch (error) {
       console.error("[OrderController.create]", error);
       next(error);
     }
   }
 
+  // ── PATCH /:id/status ────────────────────────────────────────────────
   static async updateStatusOrder(
     req: express.Request,
     res: express.Response,
@@ -228,7 +315,6 @@ class OrderController {
       "LIVRÉE",
       "ANNULÉE",
     ];
-
     if (!status || !validStatuses.includes(status)) {
       return ApiResponse.error(res, null, `Invalid status: ${status}`, 400);
     }
@@ -239,17 +325,28 @@ class OrderController {
         return ApiResponse.notFound(res, `Order not found with ID: ${id}`);
       }
 
+      // Champs timestamps automatiques selon le statut
+      const ts: Record<string, Date | undefined> = {};
+      if (status === "EN_COURS_DE_PREPARATION" && !existing.preparingAt) ts.preparingAt = new Date();
+      if (status === "PRÊTE" && !existing.readyAt) ts.readyAt = new Date();
+      if (status === "LIVRÉE" && !existing.deliveredAt) ts.deliveredAt = new Date();
+
       const order = await prisma.order.update({
         where: { id: +id! },
-        data: { status },
+        data: { status, ...ts },
         include: ORDER_INCLUDE,
       });
+
+      // Notification client
+      notifyStatusChanged(order, status).catch(() => {});
+
       return ApiResponse.success(res, order, "Order status updated");
     } catch (error) {
       next(error);
     }
   }
 
+  // ── PATCH /:id/cancel ────────────────────────────────────────────────
   static async cancelOrder(
     req: express.Request,
     res: express.Response,
@@ -261,7 +358,6 @@ class OrderController {
       if (!existing) {
         return ApiResponse.notFound(res, `Order not found with ID: ${id}`);
       }
-
       if (existing.status === "ANNULÉE") {
         return ApiResponse.error(res, null, "Order is already cancelled", 400);
       }
@@ -271,6 +367,9 @@ class OrderController {
         data: { status: "ANNULÉE" },
         include: ORDER_INCLUDE,
       });
+
+      notifyStatusChanged(order, "ANNULÉE").catch(() => {});
+
       return ApiResponse.success(res, order, "Order cancelled successfully");
     } catch (error) {
       next(error);

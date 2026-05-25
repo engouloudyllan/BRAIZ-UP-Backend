@@ -190,6 +190,7 @@ class ProductController {
         "Product retrieved successfully !!!",
       );
     } catch (error) {
+      console.log(error);
       next(error);
     }
   }
