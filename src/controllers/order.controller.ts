@@ -4,6 +4,7 @@ import ApiResponse from "../helpers/responses.js";
 import Utils from "../helpers/Utils.js";
 import type { OrderStatus, paymentMethod, CustomerType } from "@prisma/client";
 import type { UploadedFile } from "express-fileupload";
+import type { AuthenticatedRequest } from "../middlewares/auth.middleware.js";
 import {
   notifyOrderInitiated,
   notifyStatusChanged,
@@ -43,29 +44,40 @@ interface GuestOrderBody {
   guestCity?: string;
   isDeliveryRequested?: string;
   shippingAddress?: string;
-  shippingZoneId?: string; // ← envoyé par le frontend
-  proximityAddress?: string; // ← adresse approximative tapée par le client
+  shippingZoneId?: string;
+  proximityAddress?: string;
   deliveryTime?: string;
   paymentMethod?: string;
-  items?: string; // JSON: [{productId, quantity}]
+  items?: string;
+  // ─── Pour user connecté ───
+  addressId?: string;
 }
 
 class OrderController {
   // ── GET / ────────────────────────────────────────────────────────────
-  // Pagination optionnelle via ?page=&limit=&status=&search=
+  // Pagination optionnelle via ?page=&limit=&status=&search=&my=true
   static async getAll(
-    req: express.Request,
+    req: AuthenticatedRequest,
     res: express.Response,
     next: express.NextFunction,
   ) {
     try {
-      const { page, limit, status, search } = req.query;
+      const { page, limit, status, search, my } = req.query;
       const take = limit ? Math.max(1, Math.min(100, +limit)) : 0; // 0 = no pagination
       const _page = page ? Math.max(1, +page) : 1;
       const skip = take ? (_page - 1) * take : 0;
 
       const where: any = {};
       if (status && typeof status === "string") where.status = status;
+
+      // ?my=true → filtrer pour l'utilisateur connecté uniquement
+      if (my === "true") {
+        if (!req.user) {
+          return ApiResponse.error(res, null, "Authentification requise", 401);
+        }
+        where.userId = req.user.id;
+      }
+
       if (search && typeof search === "string") {
         const s = search.trim();
         where.OR = [
@@ -160,7 +172,7 @@ class OrderController {
 
   // ── POST / ───────────────────────────────────────────────────────────
   static async create(
-    req: express.Request,
+    req: AuthenticatedRequest,
     res: express.Response,
     next: express.NextFunction,
   ) {
@@ -205,15 +217,40 @@ class OrderController {
     try {
       // ── 1. Choisir la zone de livraison ──────────────────────────────
       let zone: { id: number; fee: number } | null = null;
+      let savedAddressId: number | null = null;
+      let savedAddressStreet: string | null = null;
 
-      if (body.shippingZoneId) {
+      // 1.a — Si user connecté + addressId → on récupère la zone via l'adresse
+      if (req.user && body.addressId) {
+        const address = await prisma.address.findFirst({
+          where: { id: +body.addressId, userId: req.user.id },
+          include: { shippingZone: true },
+        });
+        if (!address) {
+          return ApiResponse.error(res, null, "Adresse introuvable", 400);
+        }
+        if (!address.shippingZone.isActive) {
+          return ApiResponse.error(
+            res,
+            null,
+            "Cette adresse pointe vers une zone désactivée",
+            400,
+          );
+        }
+        zone = { id: address.shippingZone.id, fee: address.shippingZone.fee };
+        savedAddressId = address.id;
+        savedAddressStreet = address.street;
+      }
+
+      // 1.b — Sinon, on prend shippingZoneId envoyé directement
+      if (!zone && body.shippingZoneId) {
         zone = await prisma.shippingZone.findFirst({
           where: { id: +body.shippingZoneId, isActive: true },
           select: { id: true, fee: true },
         });
       }
 
-      // Fallback : prendre la première zone active si aucune n'est fournie
+      // 1.c — Fallback : première zone active
       if (!zone) {
         zone = await prisma.shippingZone.findFirst({
           where: { isActive: true },
@@ -296,12 +333,14 @@ class OrderController {
       // avec l'ID réel pour respecter la contrainte UNIQUE de la table.
       const tempCode = `TMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+      // Si user connecté : on lie userId et on ignore les champs guest
+      const isAuthed = !!req.user;
       const createdOrder = await prisma.order.create({
         data: {
           codeTicket: tempCode,
           totalProducts,
           shippingFee,
-          shippingAddress: body.shippingAddress ?? "",
+          shippingAddress: savedAddressStreet ?? body.shippingAddress ?? "",
           paymentProofUrl,
           totalAmount,
           isDeliveryRequested,
@@ -310,14 +349,16 @@ class OrderController {
           status: "EN_PRECOMMANDE",
           paymentMethod: body.paymentMethod as paymentMethod,
           customerType,
-          guestName: body.guestName ?? null,
-          guestSurname: body.guestSurname ?? null,
-          guestCompanyName: body.guestCompanyName ?? null,
-          guestResponsable: body.guestResponsable ?? null,
-          guestPhone: body.guestPhone ?? null,
-          guestEmail: body.guestEmail ?? null,
-          guestCity: body.guestCity ?? null,
+          guestName: isAuthed ? null : body.guestName ?? null,
+          guestSurname: isAuthed ? null : body.guestSurname ?? null,
+          guestCompanyName: isAuthed ? null : body.guestCompanyName ?? null,
+          guestResponsable: isAuthed ? null : body.guestResponsable ?? null,
+          guestPhone: isAuthed ? null : body.guestPhone ?? null,
+          guestEmail: isAuthed ? null : body.guestEmail ?? null,
+          guestCity: isAuthed ? null : body.guestCity ?? null,
+          userId: isAuthed ? req.user!.id : null,
           shippingZoneId: zone.id,
+          AddressId: savedAddressId,
           items: { create: orderItemsData },
         },
       });
@@ -325,7 +366,7 @@ class OrderController {
       // ── 7. Mise à jour avec codeTicket formaté ────────────────────────
       const d = createdOrder.createdAt;
       const pad = (n: number) => String(n).padStart(2, "0");
-      const codeTicket = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}_${createdOrder.id}`;
+      const codeTicket = `TKT ${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}_${createdOrder.id}`;
 
       const order = await prisma.order.update({
         where: { id: createdOrder.id },

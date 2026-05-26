@@ -12,6 +12,7 @@ import regionRouter from "./region.routes.js";
 import cityRouter from "./city.routes.js";
 import districtRouter from "./district.routes.js";
 import neighborhoodRouter from "./neighborhood.routes.js";
+import addressRouter from "./address.routes.js";
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use("/regions", regionRouter);
 router.use("/cities", cityRouter);
 router.use("/districts", districtRouter);
 router.use("/neighborhoods", neighborhoodRouter);
+router.use("/addresses", addressRouter);
 
 export default router;

@@ -32,6 +32,12 @@ const env = {
   smtpUser: process.env.SMTP_USER || "",
   smtpPass: process.env.SMTP_PASS || "",
   smtpFromName: process.env.SMTP_FROM_NAME || "BRAIZ'UP",
+
+  // ── Auth (JWT) ─────────────────────────────────────────────────────────
+  jwtSecret: process.env.JWT_SECRET || "braizup-dev-secret-CHANGE-IN-PRODUCTION",
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+  // OTP : validité du code en minutes
+  otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 10),
 };
 
 export default env;
