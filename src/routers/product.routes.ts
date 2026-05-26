@@ -27,6 +27,7 @@ productRouter.put(
   validate(updateProductSchema),
   ProductController.update,
 );
+productRouter.patch("/:id/availability", ProductController.toggleAvailability);
 productRouter.delete(
   "/:id",
   validate(deleteProductSchema),
