@@ -190,6 +190,7 @@ class ProductController {
         "Product retrieved successfully !!!",
       );
     } catch (error) {
+      console.log(error);
       next(error);
     }
   }
@@ -339,6 +340,49 @@ class ProductController {
           500,
         );
       }
+      next(error);
+    }
+  }
+
+  static async toggleAvailability(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+  ) {
+    const { id } = req.params;
+    const { isAvailable } = req.body as { isAvailable?: boolean };
+
+    try {
+      const existing = await prisma.product.findFirst({
+        where: { id: +id! },
+      });
+      if (!existing) {
+        return ApiResponse.notFound(
+          res,
+          `Product not found with this ID: ${id}`,
+        );
+      }
+
+      const newValue =
+        typeof isAvailable === "boolean" ? isAvailable : !existing.isAvailable;
+
+      const product = await prisma.product.update({
+        where: { id: +id! },
+        data: { isAvailable: newValue },
+        include: { category: true },
+      });
+
+      product.images = Utils.resolveFileUrls(
+        req,
+        product.images as unknown as string | string[],
+      );
+
+      return ApiResponse.success(
+        res,
+        product,
+        `Disponibilité ${newValue ? "activée" : "désactivée"}`,
+      );
+    } catch (error) {
       next(error);
     }
   }
