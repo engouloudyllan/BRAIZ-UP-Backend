@@ -8,6 +8,9 @@ import fileUpload from "express-fileupload";
 import cors from "cors";
 import corsOptions from "./config/corsOptions.js";
 
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
+
 const app = express();
 import cookieParser from "cookie-parser";
 
