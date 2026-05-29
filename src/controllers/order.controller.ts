@@ -70,13 +70,32 @@ class OrderController {
       const where: any = {};
       if (status && typeof status === "string") where.status = status;
 
-      // ?my=true → filtrer pour l'utilisateur connecté uniquement
+      // ── Sécurité par rôle ────────────────────────────────────────────
+      const isAdminLike =
+        req.user?.roles?.some((r) =>
+          ["ADMIN", "ORDER_MANAGER", "DELIVERY"].includes(r),
+        ) ?? false;
+
       if (my === "true") {
+        // Client demande ses commandes
         if (!req.user) {
           return ApiResponse.error(res, null, "Authentification requise", 401);
         }
         where.userId = req.user.id;
+      } else if (!isAdminLike) {
+        // Non admin et pas de ?my=true → si connecté, on filtre sur ses commandes
+        // (sinon on bloque)
+        if (!req.user) {
+          return ApiResponse.error(
+            res,
+            null,
+            "Accès refusé : authentification requise",
+            401,
+          );
+        }
+        where.userId = req.user.id;
       }
+      // sinon : admin/order_manager/delivery → voient tout
 
       if (search && typeof search === "string") {
         const s = search.trim();
@@ -123,7 +142,7 @@ class OrderController {
 
   // ── GET /:id ─────────────────────────────────────────────────────────
   static async getById(
-    req: express.Request,
+    req: AuthenticatedRequest,
     res: express.Response,
     next: express.NextFunction,
   ) {
@@ -136,6 +155,16 @@ class OrderController {
       if (!order) {
         return ApiResponse.notFound(res, `Order not found with ID: ${id}`);
       }
+
+      // Sécurité : un client ne peut voir que ses propres commandes
+      const isAdminLike =
+        req.user?.roles?.some((r) =>
+          ["ADMIN", "ORDER_MANAGER", "DELIVERY"].includes(r),
+        ) ?? false;
+      if (!isAdminLike && req.user && order.userId !== req.user.id) {
+        return ApiResponse.error(res, null, "Accès refusé", 403);
+      }
+
       return ApiResponse.success(res, order, "Order retrieved successfully");
     } catch (error) {
       next(error);

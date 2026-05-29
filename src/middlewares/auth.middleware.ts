@@ -5,21 +5,15 @@ import ApiResponse from "../helpers/responses.js";
 import { prisma } from "../models/index.js";
 
 /**
- * On omet `user` du Request original (déclaré globalement comme Prisma `User` complet,
- * password inclus, dans src/Types/index.d.ts) puis on le redéclare avec un shape "safe"
- * sans password. Empêche le conflit TS et évite tout risque de fuite du mot de passe.
+ * `AuthenticatedRequest` est désormais un simple alias de `express.Request`.
+ * La forme exacte de `req.user` (sans password, avec roles[]) est déclarée
+ * une seule fois globalement dans src/Types/index.d.ts.
+ *
+ * Garder l'alias permet de :
+ *  - Documenter qu'un handler attend un user authentifié
+ *  - Ne rien casser dans les imports existants
  */
-export interface AuthenticatedRequest extends Omit<express.Request, "user"> {
-  user?: {
-    id: number;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    phoneNumber: string | null;
-    profileImage: string | null;
-    isVerified: boolean;
-  };
-}
+export type AuthenticatedRequest = express.Request;
 
 /**
  * Middleware d'authentification.
@@ -58,6 +52,7 @@ export async function requireAuth(
         profileImage: true,
         isVerified: true,
         isActive: true,
+        roles: { include: { role: { select: { title: true } } } },
       },
     });
 
@@ -73,11 +68,39 @@ export async function requireAuth(
       phoneNumber: user.phoneNumber,
       profileImage: user.profileImage,
       isVerified: user.isVerified,
+      roles: user.roles.map((r) => r.role.title),
     };
     next();
   } catch (err: any) {
     return ApiResponse.error(res, null, "Token invalide ou expiré", 401);
   }
+}
+
+/**
+ * Middleware exige au moins UN des rôles passés. Utilisation :
+ *   router.delete("/:id", requireAuth, requireRole("ADMIN"), Ctrl.delete)
+ *   router.patch("/:id/status", requireAuth, requireRole("ADMIN", "ORDER_MANAGER"), Ctrl.x)
+ */
+export function requireRole(...allowedRoles: string[]) {
+  return (
+    req: AuthenticatedRequest,
+    res: express.Response,
+    next: express.NextFunction,
+  ) => {
+    if (!req.user) {
+      return ApiResponse.error(res, null, "Non authentifié", 401);
+    }
+    const has = req.user.roles.some((r) => allowedRoles.includes(r));
+    if (!has) {
+      return ApiResponse.error(
+        res,
+        null,
+        `Accès refusé. Rôle requis : ${allowedRoles.join(" ou ")}`,
+        403,
+      );
+    }
+    next();
+  };
 }
 
 /**
@@ -109,6 +132,7 @@ export async function optionalAuth(
         profileImage: true,
         isVerified: true,
         isActive: true,
+        roles: { include: { role: { select: { title: true } } } },
       },
     });
 
@@ -121,6 +145,7 @@ export async function optionalAuth(
         phoneNumber: user.phoneNumber,
         profileImage: user.profileImage,
         isVerified: user.isVerified,
+        roles: user.roles.map((r) => r.role.title),
       };
     }
   } catch {
