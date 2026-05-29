@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { prisma } from "../models/index.js";
 import ApiResponse from "../helpers/responses.js";
+import Utils from "../helpers/Utils.js";
 import env from "../config/env.js";
 import { createAndSendOtp, verifyOtp } from "../services/otp.service.js";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.js";
@@ -18,12 +19,29 @@ function signToken(userId: number): string {
   });
 }
 
-function publicUser(u: any) {
-  // Strip password & internal fields
+function publicUser(req: express.Request, u: any) {
+  // Strip password & internal fields, expose roles[] + resolve profileImage URL
   if (!u) return null;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { password, ...rest } = u;
-  return rest;
+  const { password, roles, profileImage, ...rest } = u;
+  return {
+    ...rest,
+    profileImage: profileImage
+      ? Utils.resolveFileUrl(req, profileImage)
+      : null,
+    roles: Array.isArray(roles)
+      ? roles.map((r: any) => (r?.role?.title ?? r?.title ?? r))
+      : [],
+  };
+}
+
+async function getUserWithRoles(userId: number) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      roles: { include: { role: { select: { id: true, title: true } } } },
+    },
+  });
 }
 
 class AuthController {
@@ -87,6 +105,16 @@ class AuthController {
         },
       });
 
+      // Assigner le rôle CLIENT par défaut
+      const clientRole = await prisma.role.findUnique({
+        where: { title: "CLIENT" },
+      });
+      if (clientRole) {
+        await prisma.userHasRoles.create({
+          data: { userId: user.id, roleId: clientRole.id },
+        });
+      }
+
       await createAndSendOtp(
         user.id,
         user.email,
@@ -132,9 +160,10 @@ class AuthController {
       });
 
       const token = signToken(user.id);
+      const full = await getUserWithRoles(user.id);
       return ApiResponse.success(
         res,
-        { token, user: publicUser(user) },
+        { token, user: publicUser(req, full) },
         "Email vérifié avec succès",
       );
     } catch (error) {
@@ -227,9 +256,10 @@ class AuthController {
       }
 
       const token = signToken(user.id);
+      const full = await getUserWithRoles(user.id);
       return ApiResponse.success(
         res,
-        { token, user: publicUser(user) },
+        { token, user: publicUser(req, full) },
         "Connexion réussie",
       );
     } catch (error) {
@@ -244,10 +274,8 @@ class AuthController {
     if (!req.user) {
       return ApiResponse.error(res, null, "Non authentifié", 401);
     }
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-    });
-    return ApiResponse.success(res, publicUser(user), "Profil");
+    const user = await getUserWithRoles(req.user.id);
+    return ApiResponse.success(res, publicUser(req, user), "Profil");
   }
 
   /**
@@ -337,9 +365,10 @@ class AuthController {
       });
 
       const token = signToken(user.id);
+      const full = await getUserWithRoles(user.id);
       return ApiResponse.success(
         res,
-        { token, user: publicUser(user) },
+        { token, user: publicUser(req, full) },
         "Mot de passe réinitialisé",
       );
     } catch (error) {

@@ -4,6 +4,7 @@ import seedCities from "./seeders/cities.seeder.js";
 import seedDistricts from "./seeders/districts.seeder.js";
 import seedNeighborhoods from "./seeders/neighborhood.seeder.js";
 import seedShippingZones from "./seeders/shippingZone.seeder.js";
+import seedRolesAndPermissions from "./seeders/roles.seeder.js";
 import env from "../src/config/env.js";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
@@ -26,6 +27,7 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log("Démarrage du seeding...\n");
 
+  await seedRolesAndPermissions(prisma);
   await seedRegions(prisma);
   await seedCities(prisma);
   await seedDistricts(prisma);
