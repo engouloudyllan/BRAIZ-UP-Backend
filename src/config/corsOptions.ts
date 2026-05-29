@@ -1,47 +1,49 @@
 import env from "./env.js";
+import type { CorsOptions } from "cors";
 
-const corsOptions = {
-  origin: function (origin: string | undefined, callback: Function) {
-    const req = this; // Hack officiel pour récupérer req
+/**
+ * Configuration CORS robuste :
+ * - Autorise la whitelist d'origines (.env WHITE_LIST_ORIGIN, séparé par virgules)
+ * - Autorise OPTIONS (preflight) — sinon les requêtes JSON+Authorization échouent
+ * - Autorise les headers Authorization, Content-Type, Accept (sinon "Failed to fetch")
+ * - Accepte les requêtes sans Origin (mobile, Postman, curl)
+ * - Credentials activé pour les cookies
+ */
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    // Mobile / Postman / curl : pas d'origin → autorisé
+    if (!origin) return callback(null, true);
 
-    // Cas mobile : pas d'origin. Autoriser React Native / Postman / apps mobiles
-    if (!origin) {
-      return callback(null, true); // Autorisé
-    }
-
-    // // Cas mobile : pas d'origin, on n'autorise pas
-    // if (!origin) {
-    //   // On doit vérifier le header nous-mêmes
-    //   // CORS ne donne pas accès aux headers ici, donc la validation se fera dans un middleware
-    //   return callback(new Error("Missing Origin"));
-    // }
-
-    // // CAS MOBILE : pas d'origin mais x-client-type = mobile
-    // if (!origin) {
-    //   if (req.headers["x-client-type"] === "mobile") {
-    //     return callback(null, true); // Autorisé
-    //   }
-    //   return callback(new Error("Not allowed: missing origin and not mobile"));
-    // }
-
-    // CAS NAVIGATEUR : vérifier la whitelist
     if (env.whiteListOrigin.indexOf(origin) !== -1) {
-      return callback(null, true); // Autorisé
+      return callback(null, true);
     }
 
+    console.warn(
+      `[CORS] Origin "${origin}" rejeté. Whitelist : ${JSON.stringify(env.whiteListOrigin)}`,
+    );
     return callback(new Error("Not allowed by CORS"));
   },
-  optionsSuccessStatus: 200,
-  preflightContinue: false,
-  methods: ["POST", "GET", "PUT", "PATCH", "DELETE"],
-  maxAge: 24 * 60 * 60 * 1000, // Mise en cache des regles CORS
-  credentials: true, // Autorise les cookies a etre envoyer au frontend et de recevoir aussi
-  "Access-Control-Allow-Credentials": true,
-};
 
-export const socketCorsOptions = {
-  origin: "*",
-  methods: ["POST", "GET"],
+  // CRITIQUE : inclure OPTIONS pour le preflight
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+
+  // CRITIQUE : autoriser explicitement les headers que le front envoie
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "X-Requested-With",
+    "X-Client-Type",
+    "X-Session-Id", // sessionId du panier invité (fiable cross-origin)
+  ],
+
+  // Headers que le front peut LIRE dans la réponse
+  exposedHeaders: ["Content-Disposition", "X-Session-Id"],
+
+  credentials: true, // cookies + Authorization
+  optionsSuccessStatus: 200, // certains anciens navigateurs (IE11) refusent 204
+  preflightContinue: false,
+  maxAge: 86400, // 24h de cache CORS
 };
 
 export default corsOptions;
