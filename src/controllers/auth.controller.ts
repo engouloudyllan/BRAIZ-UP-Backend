@@ -6,8 +6,12 @@ import ApiResponse from "../helpers/responses.js";
 import env from "../config/env.js";
 import { createAndSendOtp, verifyOtp } from "../services/otp.service.js";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.js";
+import type { User } from "@prisma/client";
+import Utils from "../helpers/Utils.js";
 
 const SALT_ROUNDS = 10;
+
+type ApiUser = Omit<User, 'password' | 'userName' | 'responsable' | 'companyName' | 'updatedAt'>;
 
 function signToken(userId: number): string {
   // jsonwebtoken@9 attend `expiresIn: number | StringValue` (template type strict).
@@ -199,7 +203,8 @@ class AuthController {
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         return ApiResponse.error(res, null, "Email ou mot de passe incorrect", 401);
-      }
+      } 
+
 
       const ok = await bcrypt.compare(password, user.password);
       if (!ok) {

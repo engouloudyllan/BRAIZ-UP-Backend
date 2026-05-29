@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import Utils from "../helpers/Utils.js";
 import type { UploadedFile } from "express-fileupload";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.js";
+import type { User } from "@prisma/client";
 
 const PUBLIC_USER_SELECT = {
   id: true,
@@ -18,6 +19,8 @@ const PUBLIC_USER_SELECT = {
   createdAt: true,
 } as const;
 
+type ApiUser = Omit<User, 'password' | 'userName' | 'responsable' | 'companyName' | 'updatedAt'>;
+
 class UserController {
   static async getAll(
     _req: express.Request,
@@ -29,7 +32,18 @@ class UserController {
         select: PUBLIC_USER_SELECT,
         orderBy: { createdAt: "desc" },
       });
-      return ResponseHandler.success(res, users, "Liste des utilisateurs");
+
+      const data = users.map((item: ApiUser) => {
+        item.id = item.id;
+        if (item.profileImage) {
+          item.profileImage = Utils.resolveFileUrl(_req, item.profileImage);
+          return item;
+        } else {
+          return item;
+        }
+      });
+
+      return ResponseHandler.success(res, data, "Liste des utilisateurs");
     } catch (error: any) {
       next(error);
     }
