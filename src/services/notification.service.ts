@@ -119,12 +119,12 @@ function getTransporter(): nodemailer.Transporter | null {
       host: env.smtpHost,
       port: env.smtpPort,
       secure: env.smtpPort === 465,
-      family: 4,          // force IPv4 – résout le problème réseau
+      family: 4,                              // ← Force IPv4
       auth: {
         user: env.smtpUser,
         pass: env.smtpPass,
       },
-    } as nodemailer.TransportOptions); // ← cast
+    } as nodemailer.TransportOptions);        // ← Cast pour éviter l'erreur TypeScript
   }
   return _transporter;
 }
