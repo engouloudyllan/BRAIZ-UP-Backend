@@ -112,19 +112,28 @@ let _transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter | null {
   if (!env.smtpUser || !env.smtpPass) {
+    console.warn("📧 SMTP non configuré (utilisateur ou mot de passe manquant)");
     return null;
   }
+
   if (!_transporter) {
-    _transporter = nodemailer.createTransport({
-      host: env.smtpHost,
-      port: env.smtpPort,
-      secure: env.smtpPort === 465,
-      family: 4,                              // ← Force IPv4
+    // Options de base
+    const options: any = {
+      host: env.smtpHost,       // smtp.gmail.com
+      port: Number(env.smtpPort) || 465,
+      secure: (Number(env.smtpPort) || 465) === 465, // true pour 465
+      family: 4,                // Force IPv4 (important!)
       auth: {
         user: env.smtpUser,
         pass: env.smtpPass,
       },
-    } as nodemailer.TransportOptions);        // ← Cast pour éviter l'erreur TypeScript
+      // Augmente les timeouts (évite les faux timeouts)
+      connectionTimeout: 30 * 1000,   // 30 secondes
+      greetingTimeout: 30 * 1000,
+      socketTimeout: 30 * 1000,
+    };
+
+    _transporter = nodemailer.createTransport(options);
   }
   return _transporter;
 }
