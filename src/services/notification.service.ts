@@ -92,20 +92,39 @@ function formatPrice(n: number): string {
 // ────────────────────────────────────────────────────────────────────────
 let _transporter: nodemailer.Transporter | null = null;
 
+// function getTransporter(): nodemailer.Transporter | null {
+//   if (!env.smtpUser || !env.smtpPass) {
+//     return null; // Pas configuré : on skip silencieusement
+//   }
+//   if (!_transporter) {
+//     _transporter = nodemailer.createTransport({
+//       host: env.smtpHost,
+//       port: env.smtpPort,
+//       secure: env.smtpPort === 465, // true pour 465, false sinon (587 = STARTTLS)
+//       auth: {
+//         user: env.smtpUser,
+//         pass: env.smtpPass,
+//       },
+//     });
+//   }
+//   return _transporter;
+// }
+
 function getTransporter(): nodemailer.Transporter | null {
   if (!env.smtpUser || !env.smtpPass) {
-    return null; // Pas configuré : on skip silencieusement
+    return null;
   }
   if (!_transporter) {
     _transporter = nodemailer.createTransport({
       host: env.smtpHost,
       port: env.smtpPort,
-      secure: env.smtpPort === 465, // true pour 465, false sinon (587 = STARTTLS)
+      secure: env.smtpPort === 465,
+      family: 4,          // force IPv4 – résout le problème réseau
       auth: {
         user: env.smtpUser,
         pass: env.smtpPass,
       },
-    });
+    } as nodemailer.TransportOptions); // ← cast
   }
   return _transporter;
 }
